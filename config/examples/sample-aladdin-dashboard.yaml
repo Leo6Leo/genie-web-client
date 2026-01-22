@@ -1,0 +1,60 @@
+apiVersion: aladdin.openshift.io/v1alpha1
+kind: AladdinDashboard
+metadata:
+  name: cluster-overview
+  namespace: default
+spec:
+  title: "Cluster Overview Dashboard"
+  description: "A sample dashboard showing cluster health metrics"
+  refreshInterval: "5m"
+  tags:
+    - monitoring
+    - cluster-health
+  owner: "leo"
+  layout:
+    columns: 12
+    panels:
+    - id: cpu-usage-panel
+      title: "Cluster CPU Usage"
+      position:
+        x: 0
+        "y": 0
+        width: 6
+        height: 3
+      component:
+        type: Chart
+        version: v1
+        config:
+          chartType: "line"
+          title: "CPU Usage Over Time"
+          yAxis:
+            label: "CPU %"
+            min: 0
+            max: 100
+      dataSource:
+        toolCall:
+          tool: "prometheus_query"
+          arguments:
+            query: "100 - (avg(irate(node_cpu_seconds_total{mode='idle'}[5m])) * 100)"
+            range: "1h"
+        cachePolicy: ShortTerm
+    - id: memory-usage-panel
+      title: "Memory Usage"
+      position:
+        x: 6
+        "y": 0
+        width: 6
+        height: 3
+      component:
+        type: Chart
+        version: v1
+        config:
+          chartType: "area"
+          title: "Memory Usage"
+      dataSource:
+        toolCall:
+          tool: "prometheus_query"
+          arguments:
+            query: "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes"
+            range: "1h"
+        cachePolicy: ShortTerm
