@@ -12,6 +12,9 @@ export enum SubRoutes {
   Library = 'library',
   // Canvas
   Canvas = 'canvas',
+  // Test routes for Dashboard CRD POC
+  TestDashboard = 'test_dashboard',
+  TestEditDashboard = 'test_edit_dashboard',
 }
 
 // Used only for navigation - make sure this nesting represents Routes.tsx
