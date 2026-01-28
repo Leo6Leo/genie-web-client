@@ -9,6 +9,7 @@ import { Chat } from './Chat/Chat';
 import { ArtifactLibrary } from './artifact-library';
 import { CanvasPreview } from './canvas';
 import { TestDashboardView, TestDashboardEdit } from './test-dashboard';
+import { DashboardViewPage } from './dashboard-renderer';
 
 const GenieRoutes = () => {
   return (
@@ -24,6 +25,7 @@ const GenieRoutes = () => {
         <Route path={SubRoutes.Canvas} element={<CanvasPreview />} />
         <Route path={SubRoutes.TestDashboard} element={<TestDashboardView />} />
         <Route path={SubRoutes.TestEditDashboard} element={<TestDashboardEdit />} />
+        <Route path={`${SubRoutes.DashboardView}/:namespace/:name`} element={<DashboardViewPage />} />
         <Route path={SubRoutes.AIandAutomation} element={<></>} />
         <Route path={SubRoutes.Insights} element={<></>} />
         <Route path={SubRoutes.Security} element={<></>} />

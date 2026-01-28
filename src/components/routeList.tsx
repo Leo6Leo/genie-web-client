@@ -15,6 +15,8 @@ export enum SubRoutes {
   // Test routes for Dashboard CRD POC
   TestDashboard = 'test_dashboard',
   TestEditDashboard = 'test_edit_dashboard',
+  // Dashboard view route - pattern: dashboard/:namespace/:name
+  DashboardView = 'dashboard',
 }
 
 // Used only for navigation - make sure this nesting represents Routes.tsx
