@@ -139,5 +139,14 @@
   "message.action.readAloud": "Read aloud",
   "message.action.report": "Report",
   "feedback.success.title": "Feedback submitted successfully",
-  "feedback.error.title": "Failed to submit feedback"
+  "feedback.error.title": "Failed to submit feedback",
+  "dashboardRenderer.loading": "Loading dashboard...",
+  "dashboardRenderer.error.title": "Error loading dashboard",
+  "dashboardRenderer.error.description": "Failed to load dashboard: {{error}}",
+  "dashboardRenderer.notFound.title": "Dashboard not found",
+  "dashboardRenderer.notFound.description": "The dashboard \"{{name}}\" was not found in namespace \"{{namespace}}\".",
+  "dashboardRenderer.backToLibrary": "Back to Library",
+  "dashboardRenderer.edit": "Edit",
+  "dashboardRenderer.panel.error": "Failed to load panel data",
+  "dashboardRenderer.panel.noContent": "No content available"
 }
