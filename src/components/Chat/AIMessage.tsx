@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
-import { useMemo, FunctionComponent, memo, useCallback } from 'react';
+import { useMemo, FunctionComponent, memo, useCallback, useState } from 'react';
 import { Message } from '@patternfly/chatbot';
+import { Flex, FlexItem } from '@patternfly/react-core';
 import {
   CopyIcon,
   RedoIcon,
@@ -12,23 +13,32 @@ import {
 } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
 import type { Message as MessageType } from '../../hooks/AIState';
-import type { ToolCallState } from './useToolCalls';
-import { ToolCallsList } from './ToolCallsList';
+import { useSendFeedback } from '../../hooks/AIState';
+import { getToolCallsFromMessage } from '../../hooks/useChatMessages';
+import type { ToolCallState } from 'src/utils/toolCallHelpers';
 import { ArtifactRenderer } from '../artifacts';
 import type { Artifact, GenieAdditionalProperties } from '../../types/chat';
 import { toMessageQuickResponses } from '../new-chat/suggestions';
+import { ToolCalls } from './ToolCalls';
+import { Sources } from './Sources';
+import { ReferencedDocument } from 'src/hooks/AIState';
+import { useBadResponseModal } from './feedback/BadResponseModal';
+import { useToastAlerts } from '../toast-alerts/ToastAlertProvider';
+
+// feedback rating constants to prevent typos
+const FEEDBACK_RATING = {
+  GOOD: 'good',
+  BAD: 'bad',
+} as const;
+
+type FeedbackRating = (typeof FEEDBACK_RATING)[keyof typeof FEEDBACK_RATING] | null;
 
 export interface AIMessageProps {
   message: MessageType<GenieAdditionalProperties>;
+  conversationId: string;
+  userQuestion: string;
   onQuickResponse: (text: string) => void;
   isStreaming?: boolean;
-  toolCalls?: ToolCallState[];
-  // TODO: Add these handlers when implementing AI message actions
-  // onRegenerate?: (messageId: string) => void;
-  // onCopy?: (content: string) => void;
-  // onFeedback?: (messageId: string, isPositive: boolean) => void;
-  // onShare?: (messageId: string) => void;
-  // onReadAloud?: (content: string) => void;
 }
 
 /**
@@ -36,18 +46,25 @@ export interface AIMessageProps {
  */
 function collectArtifactsFromToolCalls(toolCalls: ToolCallState[]): Artifact[] {
   return toolCalls
-    .filter((call) => call.status === 'completed' && call.artifacts)
+    .filter((call) => call.status === 'success' && call.artifacts)
     .flatMap((call) => call.artifacts || []);
 }
 
 export const AIMessage: FunctionComponent<AIMessageProps> = memo(
-  ({ message, onQuickResponse, isStreaming = false, toolCalls = [] }) => {
+  ({ message, conversationId, userQuestion, onQuickResponse, isStreaming = false }) => {
     const { t } = useTranslation('plugin__genie-web-client');
     const content = message.answer || '';
+    const [feedbackRating, setFeedbackRating] = useState<FeedbackRating>(null);
+    const { sendFeedback, isLoading } = useSendFeedback();
+    const { badResponseModalToggle } = useBadResponseModal();
+    const { addAlert } = useToastAlerts();
 
-    // Extract quick responses from message additionalAttributes
+    // extract quick responses, referenced documents, and tool calls from message additionalAttributes
     const additionalAttrs = message.additionalAttributes;
     const quickResponsesPayload = additionalAttrs?.quickResponses;
+    const referencedDocuments = (additionalAttrs?.referencedDocuments ??
+      []) as ReferencedDocument[];
+    const toolCalls = getToolCallsFromMessage(message);
 
     const handleCopy = useCallback((): void => {
       navigator.clipboard.writeText(content);
@@ -57,9 +74,70 @@ export const AIMessage: FunctionComponent<AIMessageProps> = memo(
       console.log('Regenerate');
     }, []);
 
-    const handleFeedback = useCallback((isPositive: boolean): void => {
-      console.log('Feedback', isPositive);
-    }, []);
+    const handleFeedback = useCallback(
+      async (isPositive: boolean): Promise<void> => {
+        const newRating = isPositive ? FEEDBACK_RATING.GOOD : FEEDBACK_RATING.BAD;
+
+        // clicking same button again clears the selection
+        if (
+          (isPositive && feedbackRating === FEEDBACK_RATING.GOOD) ||
+          (!isPositive && feedbackRating === FEEDBACK_RATING.BAD)
+        ) {
+          setFeedbackRating(null);
+          return;
+        }
+
+        // thumbs down opens the feedback form
+        if (!isPositive) {
+          // set state to show thumbs down is selected
+          setFeedbackRating(newRating);
+          badResponseModalToggle(message);
+          return;
+        }
+
+        // thumbs up sends feedback directly
+        // update button state optimistically so user sees immediate feedback
+        setFeedbackRating(newRating);
+
+        try {
+          await sendFeedback({
+            conversation_id: conversationId,
+            user_question: userQuestion,
+            llm_response: content,
+            isPositive: true,
+          });
+
+          // show success toast
+          addAlert({
+            id: `feedback-success-${message.id}-${Date.now()}`,
+            variant: 'success',
+            title: t('feedback.success.title'),
+          });
+        } catch (err) {
+          // reset state on error so user can retry
+          setFeedbackRating(null);
+
+          // show error toast
+          addAlert({
+            id: `feedback-error-${message.id}-${Date.now()}`,
+            variant: 'danger',
+            title: t('feedback.error.title'),
+            children: typeof err === 'string' ? err : t('feedback.badResponse.error.unexpected'),
+          });
+        }
+      },
+      [
+        feedbackRating,
+        conversationId,
+        userQuestion,
+        content,
+        sendFeedback,
+        badResponseModalToggle,
+        message,
+        addAlert,
+        t,
+      ],
+    );
 
     const handleShare = useCallback((): void => {
       console.log('Share');
@@ -75,31 +153,69 @@ export const AIMessage: FunctionComponent<AIMessageProps> = memo(
 
     const actions = useMemo(
       () => ({
-        copy: { icon: <CopyIcon />, onClick: handleCopy, label: 'Copy' },
+        copy: {
+          icon: <CopyIcon />,
+          onClick: handleCopy,
+          tooltipContent: t('message.action.copy'),
+          clickedTooltipContent: t('message.action.copied'),
+        },
         regenerate: {
           icon: <RedoIcon />,
+          ariaLabel: 'Regenerate',
           onClick: handleRegenerate,
-          label: 'Regenerate',
+          tooltipContent: t('message.action.regenerate'),
+          clickedAriaLabel: 'Regenerated',
+          clickedTooltipContent: 'Regenerated',
         },
         positive: {
           icon: <ThumbsUpIcon />,
           onClick: () => handleFeedback(true),
-          label: 'Good response',
+          tooltipContent: t('message.action.goodResponse'),
+          clickedTooltipContent: t('message.action.goodResponseRated'),
+          ariaLabel: t('message.action.goodResponse'),
+          clickedAriaLabel: t('message.action.goodResponseRated'),
+          isClicked: feedbackRating === FEEDBACK_RATING.GOOD,
+          isDisabled: isLoading,
         },
         negative: {
           icon: <ThumbsDownIcon />,
           onClick: () => handleFeedback(false),
-          label: 'Bad response',
+          tooltipContent: t('message.action.badResponse'),
+          clickedTooltipContent: t('message.action.badResponseRated'),
+          ariaLabel: t('message.action.badResponse'),
+          clickedAriaLabel: t('message.action.badResponseRated'),
+          isClicked: feedbackRating === FEEDBACK_RATING.BAD,
         },
-        share: { icon: <ShareIcon />, onClick: handleShare, label: 'Share' },
+        share: {
+          icon: <ShareIcon />,
+          onClick: handleShare,
+          tooltipContent: t('message.action.share'),
+        },
         listen: {
           icon: <VolumeUpIcon />,
           onClick: handleReadAloud,
-          label: 'Read aloud',
+          tooltipContent: t('message.action.readAloud'),
         },
-        report: { icon: <FlagIcon />, onClick: handleReport, label: 'Report' },
+        report: {
+          icon: <FlagIcon />,
+          ariaLabel: 'Report',
+          onClick: handleReport,
+          tooltipContent: t('message.action.report'),
+          clickedAriaLabel: 'Reported',
+          clickedTooltipContent: 'Reported',
+        },
       }),
-      [handleCopy, handleRegenerate, handleFeedback, handleShare, handleReadAloud, handleReport],
+      [
+        handleCopy,
+        handleRegenerate,
+        handleFeedback,
+        handleShare,
+        handleReadAloud,
+        handleReport,
+        feedbackRating,
+        isLoading,
+        t,
+      ],
     );
 
     const artifacts = useMemo(() => collectArtifactsFromToolCalls(toolCalls), [toolCalls]);
@@ -112,33 +228,62 @@ export const AIMessage: FunctionComponent<AIMessageProps> = memo(
 
     const hasToolCalls = toolCalls.length > 0;
     const hasArtifacts = artifacts.length > 0;
+    const hasSources = referencedDocuments.length > 0;
+    const hasEndContent = hasToolCalls || hasSources;
     const extraContent = {
-      beforeMainContent: hasToolCalls ? <ToolCallsList toolCalls={toolCalls} /> : null,
       afterMainContent: hasArtifacts ? <ArtifactRenderer artifacts={artifacts} /> : null,
+      endContent: hasEndContent ? (
+        <Flex gap={{ default: 'gapSm' }}>
+          {hasSources ? (
+            <FlexItem>
+              <Sources sources={referencedDocuments} />
+            </FlexItem>
+          ) : null}
+          {hasToolCalls ? (
+            <FlexItem>
+              <ToolCalls toolCalls={toolCalls} />
+            </FlexItem>
+          ) : null}
+        </Flex>
+      ) : null,
     };
+
+    const timestamp = useMemo(() => {
+      const date = new Date(message.date as Date);
+      return isNaN(date.getTime())
+        ? ''
+        : `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+    }, [message.date]);
+
+    const hasContent = content.length > 0;
+    const showLoading = isStreaming && !hasContent;
 
     return (
       <Message
         name="Genie"
-        isLoading={isStreaming}
+        isLoading={showLoading}
         role="bot"
         content={content}
+        timestamp={timestamp}
         extraContent={extraContent}
         actions={actions}
         quickResponses={quickResponses}
+        persistActionSelection={true}
       />
     );
   },
   (prevProps, nextProps) => {
-    // Always re-render if message ID changes (shouldn't happen with proper keys, but safety check)
+    // re-render if message id changes (shouldn't happen with proper keys, but just in case)
     if (prevProps.message.id !== nextProps.message.id) {
       return false;
     }
-    // Re-render if any of these change
+    // re-render if any of these change
     return (
       prevProps.isStreaming === nextProps.isStreaming &&
       prevProps.message.answer === nextProps.message.answer &&
-      prevProps.toolCalls === nextProps.toolCalls // Shallow reference check is sufficient
+      prevProps.message.date === nextProps.message.date &&
+      prevProps.conversationId === nextProps.conversationId &&
+      prevProps.userQuestion === nextProps.userQuestion
     );
   },
 );
