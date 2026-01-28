@@ -1,0 +1,156 @@
+apiVersion: aladdin.openshift.io/v1alpha1
+kind: AladdinDashboard
+metadata:
+  name: test-render-dashboard
+  namespace: default
+spec:
+  title: "Dashboard Rendering Test"
+  description: "A test dashboard showcasing different panel component types with mock data"
+  refreshInterval: "5m"
+  tags:
+    - test
+    - rendering
+    - spike
+  owner: "leo"
+  layout:
+    columns: 12
+    panels:
+      # Row 1: Metrics across the top
+      - id: cluster-health-metric
+        title: "Cluster Health"
+        position:
+          x: 0
+          "y": 0
+          width: 3
+          height: 2
+        component:
+          type: Metric
+          version: v1
+          config:
+            format: "percentage"
+        dataSource:
+          toolCall:
+            tool: "cluster_health"
+            arguments: {}
+          cachePolicy: ShortTerm
+
+      - id: pod-count-metric
+        title: "Active Pods"
+        position:
+          x: 3
+          "y": 0
+          width: 3
+          height: 2
+        component:
+          type: Metric
+          version: v1
+          config:
+            format: "number"
+        dataSource:
+          toolCall:
+            tool: "pod_count"
+            arguments: {}
+          cachePolicy: ShortTerm
+
+      - id: cpu-chart
+        title: "CPU Usage"
+        position:
+          x: 6
+          "y": 0
+          width: 6
+          height: 2
+        component:
+          type: Chart
+          version: v1
+          config:
+            chartType: "line"
+        dataSource:
+          toolCall:
+            tool: "prometheus_query"
+            arguments:
+              query: "cpu_usage"
+          cachePolicy: ShortTerm
+
+      # Row 2: Table and Alerts
+      - id: pods-table
+        title: "Pod Status"
+        position:
+          x: 0
+          "y": 2
+          width: 8
+          height: 3
+        component:
+          type: Table
+          version: v1
+          config:
+            columns:
+              - name
+              - status
+              - cpu
+              - memory
+        dataSource:
+          toolCall:
+            tool: "pods_list_in_namespace"
+            arguments:
+              namespace: "default"
+          cachePolicy: ShortTerm
+
+      - id: alerts-panel
+        title: "Recent Alerts"
+        position:
+          x: 8
+          "y": 2
+          width: 4
+          height: 3
+        component:
+          type: Alert
+          version: v1
+          config:
+            maxAlerts: 5
+        dataSource:
+          toolCall:
+            tool: "alertmanager_alerts"
+            arguments: {}
+          cachePolicy: NoCache
+
+      # Row 3: Resources and Logs
+      - id: resources-summary
+        title: "Resource Summary"
+        position:
+          x: 0
+          "y": 5
+          width: 4
+          height: 2
+        component:
+          type: Resource
+          version: v1
+          config:
+            resourceTypes:
+              - pods
+              - deployments
+              - services
+        dataSource:
+          toolCall:
+            tool: "resources_summary"
+            arguments: {}
+          cachePolicy: ShortTerm
+
+      - id: logs-panel
+        title: "Application Logs"
+        position:
+          x: 4
+          "y": 5
+          width: 8
+          height: 2
+        component:
+          type: Log
+          version: v1
+          config:
+            tailLines: 10
+        dataSource:
+          toolCall:
+            tool: "pods_log"
+            arguments:
+              namespace: "default"
+              pod: "frontend-app"
+          cachePolicy: NoCache
