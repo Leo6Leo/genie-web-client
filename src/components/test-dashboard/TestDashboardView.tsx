@@ -167,6 +167,15 @@ export const TestDashboardView: React.FC = () => {
                 <Split hasGutter style={{ marginTop: '1rem' }}>
                   <SplitItem>
                     <Link
+                      to={`/genie/dashboard/${dashboard.metadata?.namespace}/${dashboard.metadata?.name}`}
+                    >
+                      <Button variant="primary" size="sm">
+                        {t('View')}
+                      </Button>
+                    </Link>
+                  </SplitItem>
+                  <SplitItem>
+                    <Link
                       to={`/genie/test_edit_dashboard?name=${dashboard.metadata?.name}&namespace=${dashboard.metadata?.namespace}`}
                     >
                       <Button variant="secondary" size="sm">
